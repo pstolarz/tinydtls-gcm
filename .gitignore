@@ -1,0 +1,9 @@
+/config.log
+/config.status
+/libtinydtls.a
+doc/Doxyfile
+doc/doxygen.out
+doc/html/*
+Makefile
+*.o
+*.exe
