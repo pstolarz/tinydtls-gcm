@@ -1,0 +1,13 @@
+tinyDTLS v0.8.2 fork + Galois Counter Mode (GCM) support.
+The following cipher suites are supported:
+
+Legacy:
+  TLS_PSK_WITH_AES_128_CCM_8
+  TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8
+New:
+  TLS_PSK_WITH_AES_128_GCM_SHA256
+  TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+
+Compilation
+  ./configure --with-gcm
+  make

@@ -121,6 +121,9 @@
 /* Define to 1 if building for Contiki. */
 #undef WITH_CONTIKI
 
+/* Define to 1 if building for GCM support */
+#undef WITH_GCM
+
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */
 #if defined AC_APPLE_UNIVERSAL_BUILD

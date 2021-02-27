@@ -46,11 +46,17 @@ SOURCES:= dtls.c crypto.c ccm.c hmac.c netq.c peer.c dtls_time.c session.c
 ifneq ("@NDEBUG@", "1")
 SOURCES += debug.c
 endif
+ifeq ("@WITH_GCM@", "1")
+SOURCES += gcm.c
+endif
 SUB_OBJECTS:=aes/rijndael.o @OPT_OBJS@
 OBJECTS:= $(patsubst %.c, %.o, $(SOURCES)) $(SUB_OBJECTS)
 HEADERS:=dtls.h hmac.h debug.h dtls_config.h uthash.h numeric.h crypto.h global.h ccm.h \
  netq.h t_list.h alert.h utlist.h prng.h peer.h state.h dtls_time.h session.h \
  tinydtls.h
+ifeq ("@WITH_GCM@", "1")
+HEADERS += gcm.h
+endif
 CFLAGS:=-Wall -pedantic -std=c99 @CFLAGS@
 CPPFLAGS:=@CPPFLAGS@ -DDTLS_CHECK_CONTENTTYPE
 SUBDIRS:=tests doc platform-specific sha2 aes ecc

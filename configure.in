@@ -56,15 +56,21 @@ AC_ARG_WITH(debug,
    NDEBUG=1], 
   [])
 
+AC_ARG_WITH(gcm,
+  [AS_HELP_STRING([--with-gcm],[enable support for GCM mode based ciphers])],
+  [AC_DEFINE(WITH_GCM,1,[Define to 1 if building for GCM support])
+   WITH_GCM=1],
+  [])
+
 AC_ARG_WITH(ecc,
-  [AS_HELP_STRING([--without-ecc],[disable support for TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8])],
+  [AS_HELP_STRING([--without-ecc],[disable support for ECC based ciphers])],
   [],
   [AC_DEFINE(DTLS_ECC, 1, [Define to 1 if building with ECC support.])
    OPT_OBJS="${OPT_OBJS} ecc/ecc.o"
    DTLS_ECC=1])
 
 AC_ARG_WITH(psk,
-  [AS_HELP_STRING([--without-psk],[disable support for TLS_PSK_WITH_AES_128_CCM_8])],
+  [AS_HELP_STRING([--without-psk],[disable support for ECC based ciphers])],
   [],
   [AC_DEFINE(DTLS_PSK, 1, [Define to 1 if building with PSK support])
    DTLS_PSK=1])
@@ -74,6 +80,7 @@ OPT_OBJS="${OPT_OBJS} sha2/sha2.o"
 
 AC_SUBST(OPT_OBJS)
 AC_SUBST(NDEBUG)
+AC_SUBST(WITH_GCM)
 AC_SUBST(WITH_CONTIKI)
 AC_SUBST(DTLS_ECC)
 AC_SUBST(DTLS_PSK)

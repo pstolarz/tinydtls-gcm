@@ -41,6 +41,9 @@
 #include "dtls.h"
 #include "crypto.h"
 #include "ccm.h"
+#ifdef WITH_GCM
+# include "gcm.h"
+#endif
 #include "ecc/ecc.h"
 #include "prng.h"
 #include "netq.h"
@@ -280,15 +283,18 @@ dtls_mac(dtls_hmac_context_t *hmac_ctx,
 }
 
 static size_t
-dtls_ccm_encrypt(aes128_ccm_t *ccm_ctx, const unsigned char *src, size_t srclen,
+dtls_ccm_encrypt(
+		 ccm_ctx_t *ccm_ctx,
+		 const unsigned char *src, size_t srclen,
 		 unsigned char *buf, 
+		 size_t tag_len,
 		 unsigned char *nounce,
 		 const unsigned char *aad, size_t la) {
   long int len;
 
   assert(ccm_ctx);
 
-  len = dtls_ccm_encrypt_message(&ccm_ctx->ctx, 8 /* M */, 
+  len = dtls_ccm_encrypt_message(&ccm_ctx->aes, tag_len,
 				 max(2, 15 - DTLS_CCM_NONCE_SIZE),
 				 nounce,
 				 buf, srclen, 
@@ -297,15 +303,18 @@ dtls_ccm_encrypt(aes128_ccm_t *ccm_ctx, const unsigned char *src, size_t srclen,
 }
 
 static size_t
-dtls_ccm_decrypt(aes128_ccm_t *ccm_ctx, const unsigned char *src,
-		 size_t srclen, unsigned char *buf,
+dtls_ccm_decrypt(
+		 ccm_ctx_t *ccm_ctx,
+		 const unsigned char *src, size_t srclen,
+		 unsigned char *buf,
+		 size_t tag_len,
 		 unsigned char *nounce,
 		 const unsigned char *aad, size_t la) {
   long int len;
 
   assert(ccm_ctx);
 
-  len = dtls_ccm_decrypt_message(&ccm_ctx->ctx, 8 /* M */, 
+  len = dtls_ccm_decrypt_message(&ccm_ctx->aes, tag_len,
 				 max(2, 15 - DTLS_CCM_NONCE_SIZE),
 				 nounce,
 				 buf, srclen, 
@@ -520,26 +529,72 @@ dtls_ecdsa_verify_sig(const unsigned char *pub_key_x,
 }
 #endif /* DTLS_ECC */
 
+size_t dtls_get_authtag_len(dtls_cipher_t cipher)
+{
+  size_t tag_len=0;
+  switch (cipher)
+  {
+  case TLS_PSK_WITH_AES_128_CCM_8:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+    tag_len=8;
+    break;
+
+#ifdef WITH_GCM
+  case TLS_PSK_WITH_AES_128_GCM_SHA256:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+    tag_len=16;
+    break;
+#endif
+
+  default:
+    break;
+  }
+  return tag_len;
+}
+
 int 
-dtls_encrypt(const unsigned char *src, size_t length,
+dtls_encrypt(dtls_cipher_t cipher,
+	     const unsigned char *src, size_t length,
 	     unsigned char *buf,
 	     unsigned char *nounce,
 	     unsigned char *key, size_t keylen,
 	     const unsigned char *aad, size_t la)
 {
-  int ret;
+  int ret=-1;
+  size_t tag_len = dtls_get_authtag_len(cipher);
   struct dtls_cipher_context_t *ctx = dtls_cipher_context_get();
 
-  ret = rijndael_set_key_enc_only(&ctx->data.ctx, key, 8 * keylen);
-  if (ret < 0) {
-    /* cleanup everything in case the key has the wrong size */
-    dtls_warn("cannot set rijndael key\n");
+  if (src != buf) memmove(buf, src, length);
+
+  switch (cipher)
+  {
+  case TLS_PSK_WITH_AES_128_CCM_8:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+    ret = rijndael_set_key_enc_only(&ctx->u.ccm.aes, key, 8*keylen);
+    if (ret < 0) {
+      dtls_warn("cannot set rijndael key\n");
+      goto error;
+    }
+    ret = dtls_ccm_encrypt(
+      &ctx->u.ccm, src, length, buf, tag_len, nounce, aad, la);
+    break;
+
+#ifdef WITH_GCM
+  case TLS_PSK_WITH_AES_128_GCM_SHA256:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+    ret = gcm_setkey(&ctx->u.gcm, key, 8*keylen);
+    if (ret < 0) {
+      dtls_warn("cannot set gcm key\n");
+      goto error;
+    }
+    ret = dtls_gcm_encrypt_message(&ctx->u.gcm,
+        tag_len, nounce, 12 /* nounce length */, buf, length, aad, la);
+    break;
+#endif
+
+  default:
     goto error;
   }
-
-  if (src != buf)
-    memmove(buf, src, length);
-  ret = dtls_ccm_encrypt(&ctx->data, src, length, buf, nounce, aad, la);
 
 error:
   dtls_cipher_context_release();
@@ -547,25 +602,48 @@ error:
 }
 
 int 
-dtls_decrypt(const unsigned char *src, size_t length,
+dtls_decrypt(dtls_cipher_t cipher,
+	     const unsigned char *src, size_t length,
 	     unsigned char *buf,
 	     unsigned char *nounce,
 	     unsigned char *key, size_t keylen,
 	     const unsigned char *aad, size_t la)
 {
-  int ret;
+  int ret=-1;
+  size_t tag_len = dtls_get_authtag_len(cipher);
   struct dtls_cipher_context_t *ctx = dtls_cipher_context_get();
 
-  ret = rijndael_set_key_enc_only(&ctx->data.ctx, key, 8 * keylen);
-  if (ret < 0) {
-    /* cleanup everything in case the key has the wrong size */
-    dtls_warn("cannot set rijndael key\n");
+  if (src != buf) memmove(buf, src, length);
+
+  switch (cipher)
+  {
+  case TLS_PSK_WITH_AES_128_CCM_8:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+    ret = rijndael_set_key_enc_only(&ctx->u.ccm.aes, key, 8*keylen);
+    if (ret < 0) {
+      dtls_warn("cannot set rijndael key\n");
+      goto error;
+    }
+    ret = dtls_ccm_decrypt(
+      &ctx->u.ccm, src, length, buf, tag_len, nounce, aad, la);
+  break;
+
+#ifdef WITH_GCM
+  case TLS_PSK_WITH_AES_128_GCM_SHA256:
+  case TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+    ret = gcm_setkey(&ctx->u.gcm, key, 8*keylen);
+    if (ret < 0) {
+      dtls_warn("cannot set gcm key\n");
+      goto error;
+    }
+    ret = dtls_gcm_decrypt_message(&ctx->u.gcm,
+        tag_len, nounce, 12 /* nounce length */, buf, length, aad, la);
+    break;
+#endif
+
+  default:
     goto error;
   }
-
-  if (src != buf)
-    memmove(buf, src, length);
-  ret = dtls_ccm_decrypt(&ctx->data, src, length, buf, nounce, aad, la);
 
 error:
   dtls_cipher_context_release();

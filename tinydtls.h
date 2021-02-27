@@ -33,6 +33,9 @@
 #ifndef _DTLS_TINYDTLS_H_
 #define _DTLS_TINYDTLS_H_
 
+/** Defined to 1 if tinydtls is built with support for GCM */
+/* #undef WITH_GCM */
+
 /** Defined to 1 if tinydtls is built with support for ECC */
 #define DTLS_ECC 1
 

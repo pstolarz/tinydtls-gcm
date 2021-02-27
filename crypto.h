@@ -39,6 +39,9 @@
 #include "numeric.h"
 #include "hmac.h"
 #include "ccm.h"
+#ifdef WITH_GCM
+# include "gcm.h"
+#endif
 
 /* TLS_PSK_WITH_AES_128_CCM_8 */
 #define DTLS_MAC_KEY_LENGTH    0
@@ -66,14 +69,22 @@ typedef enum {
   DTLS_ECDH_CURVE_SECP256R1
 } dtls_ecdh_curve;
 
-/** Crypto context for TLS_PSK_WITH_AES_128_CCM_8 cipher suite. */
+/** Crypto context for CCM ciphers */
 typedef struct {
-  rijndael_ctx ctx;		       /**< AES-128 encryption context */
-} aes128_ccm_t;
+  rijndael_ctx aes;		       /**< AES-128 encryption context */
+} ccm_ctx_t;
 
-typedef struct dtls_cipher_context_t {
+typedef struct dtls_cipher_context_t
+{
   /** numeric identifier of this cipher suite in host byte order. */
-  aes128_ccm_t data;		/**< The crypto context */
+  dtls_cipher_t cipher;
+  /** The crypto context */
+  union {
+      ccm_ctx_t ccm;    /* CCM ciphers */
+#ifdef WITH_GCM
+      gcm_ctx_t gcm;    /* GCM ciphers */
+#endif
+  } u;
 } dtls_cipher_context_t;
 
 typedef struct {
@@ -241,6 +252,11 @@ void dtls_mac(dtls_hmac_context_t *hmac_ctx,
 	      const unsigned char *packet, size_t length,
 	      unsigned char *buf);
 
+/**
+ * Provides authentication tag length for a given cipher.
+ */
+size_t dtls_get_authtag_len(dtls_cipher_t cipher);
+
 /** 
  * Encrypts the specified \p src of given \p length, writing the
  * result to \p buf. The cipher implementation may add more data to
@@ -261,7 +277,8 @@ void dtls_mac(dtls_hmac_context_t *hmac_ctx,
  * \return The number of encrypted bytes on success, less than zero
  *         otherwise. 
  */
-int dtls_encrypt(const unsigned char *src, size_t length,
+int dtls_encrypt(dtls_cipher_t cipher,
+		 const unsigned char *src, size_t length,
 		 unsigned char *buf,
 		 unsigned char *nounce,
 		 unsigned char *key, size_t keylen,
@@ -285,7 +302,8 @@ int dtls_encrypt(const unsigned char *src, size_t length,
  * \return Less than zero on error, the number of decrypted bytes 
  *         otherwise.
  */
-int dtls_decrypt(const unsigned char *src, size_t length,
+int dtls_decrypt(dtls_cipher_t cipher,
+		 const unsigned char *src, size_t length,
 		 unsigned char *buf,
 		 unsigned char *nounce,
 		 unsigned char *key, size_t keylen,
